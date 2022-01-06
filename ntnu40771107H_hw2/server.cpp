@@ -6,7 +6,7 @@
 #include<arpa/inet.h>
 #include<sys/ioctl.h>
 #include<net/if.h>
-#include<unistd.h> 
+#include<unistd.h>
 #include<string.h>
 #include<dirent.h>
 #include<errno.h>
@@ -16,9 +16,9 @@
 #include<fstream>
 #include<stdlib.h>
 #include<algorithm>
-#include <opencv/cv.h>
 #include<signal.h>
 #include<sys/wait.h>
+#include <opencv/cv.h>
 #include <opencv2/core/mat.hpp>
 #include "opencv2/opencv.hpp"
 #include <opencv2/core/types_c.h>
@@ -26,7 +26,7 @@
 using namespace std;
 using namespace cv;
 
-#define BUFF_SIZE 32768
+#define BUFF_SIZE 1024
 #define PORT 8787
 #define GET_ALL_FILE_NAME 1
 #define PUT_FILE 2
@@ -52,7 +52,7 @@ int get_files( string &files,vector <string> &vector_files  ){
     }
     while( (pdir = readdir(pf)) != NULL ){
         if( string(pdir->d_name)!="." &&  string(pdir->d_name)!=".." ){
-            files = files + string(pdir->d_name) + " ";
+            files = files + string(pdir->d_name) + "\n";
             vector_files.push_back(string(pdir->d_name));
         }
         //cout << string(pdir->d_name) << endl;
@@ -102,9 +102,9 @@ int main(int argc, char *argv[]){
     int server_addr_len = sizeof(server_addr);
     
     //Set socket to allow multiple connections
-    if( (setsockopt(server_sockfd, SOL_SOCKET, SO_REUSEADDR, &server_addr, server_addr_len)) < 0 )  {  
-        perror("setsockopt");  
-        exit(EXIT_FAILURE);  
+    if( (setsockopt(server_sockfd, SOL_SOCKET, SO_REUSEADDR, &server_addr, server_addr_len)) < 0 )  {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
     }  
     //setsockopt(server_sockfd, SOL_SOCKET, SO_REUSEADDR, &server_addr, server_addr_len);
     // Bind the server file descriptor to the server address
@@ -120,7 +120,7 @@ int main(int argc, char *argv[]){
     }
 
     puts("Waiting for connections ...");
-
+    signal(SIGCHLD,sig_catcher);
     int pid;
     while(1){
         // Accept the client and get client file descriptor
@@ -161,7 +161,7 @@ int client_instruction( int client_sockfd ){
     while( 1 ){
     
         char instruction[BUFF_SIZE];
-        int  write_byte, read_byte;    
+        int  write_byte, read_byte;
         // Receive message from client
         if((read_byte = read(client_sockfd, instruction, 2)) < 0){
             ERR_EXIT("receive failed\n");
@@ -183,100 +183,57 @@ int client_instruction( int client_sockfd ){
         vector <string> vector_files;
 
 
-        //Server has got message 
+        //Server has got message
         if( read_byte > 0 ){
             memset(buffer,0,sizeof(buffer));
+            //cout<<"instruction: "<<instruction<<endl;
             if(atoi(instruction) == GET_ALL_FILE_NAME ){
-                //printf("GET_ALL_FILE_NAME\n");
                 vector_files.clear();
-                //Send message to client 
+                //files.clear();
+                //Send message to client
                 get_files( files,vector_files );
-                sprintf(buffer, "%ld", vector_files.size());
-                //printf("size: %s\n",buffer);
-
-                if((write_byte = send(client_sockfd,buffer , strlen(buffer), 0 )) < 0){
-                    ERR_EXIT("write failed\n");
-                    return -1;
-                }
-                if((read_byte = read(client_sockfd, buffer, 3)) < 0){
-                    ERR_EXIT("receive failed\n");
-                    return -1;
-                }
-                for( string file : vector_files ){
-
-                    if((write_byte = send(client_sockfd,file.c_str() , file.size(), 0 )) < 0){
-                        ERR_EXIT("write failed\n");
-                        return -1;
-                    }
-                    if((read_byte = read(client_sockfd, buffer, sizeof(buffer)-1)) < 0){
-                        ERR_EXIT("receive failed\n");
-                        return -1;
-                    }
-                    sleep(0.1);
-                }
+                file_size = files.size();
+                //cout <<"file_size: "<<file_size<<endl;
+                write_byte = send(client_sockfd,&file_size, sizeof(file_size), 0 );
+                if( file_size != 0 ) write_byte = send(client_sockfd,files.c_str(), file_size, 0 );
+             
             }
             else if(atoi(instruction) == PUT_FILE){
 
                 //Get how much files
-                if((read_byte = read(client_sockfd, buffer, sizeof(buffer) - 1)) < 0){
-                    ERR_EXIT("receive failed\n");
-                    return -1;
-                }
-                amount_of_file = atoi(buffer);
-                //printf("%s\n",buffer);
-                sprintf(buffer,"%s","OK");
-                //Send message to client ready to get file info
-                if((write_byte = send(client_sockfd,buffer , strlen(buffer), 0 )) < 0){
-                    ERR_EXIT("write failed\n");
-                    return -1;
-                }
+                read_byte = read(client_sockfd, &amount_of_file, sizeof(amount_of_file));
                 //-------------------------------------------------------
                 for( int i=0; i<amount_of_file; ++i ){
                     //Get file Name and hole file size
                     memset(buffer,0,sizeof(buffer));
-                    if((read_byte = read(client_sockfd, buffer, sizeof(buffer) - 1)) < 0){
-                        ERR_EXIT("receive failed\n");
-                        return -1;
-                    }
-                    sscanf(buffer,"%s %lld",file_name,&file_size);
+                    memset(file_name,'\0',sizeof(file_name));
+                    read_byte = read(client_sockfd, &file_size, sizeof(file_size));
+                    read_byte = read(client_sockfd, file_name, sizeof(file_name));
+                    write_byte = send(client_sockfd,"OK", 3, 0 );
                     //puts(buffer);
-                    sprintf(buffer,"%s","OK");
-                    //Send message to client ready to get hole file
-                    if((write_byte = send(client_sockfd,buffer , strlen(buffer), 0 )) < 0){
-                        ERR_EXIT("write failed\n");
-                        return -1;
-                    }
                     //puts(file_name);
-                    //printf("%lld\n",file_size);
+                    //printf("file_size: %lld\n",file_size);
 
                     sprintf(file_path,"./40771107H_server_folder/%s",file_name);
                     new_file.open(file_path, ios::out | ios::trunc | ios::binary );
-
+                    if( ! new_file.is_open() ){
+                        printf("File could not be opened\n");
+                        perror( "ERROR" );
+                        return -1;
+                    }
+                    file_content = new char[BUFF_SIZE]();
                     //Recieve hole file
-                    while( file_size > 0  ){
-
+                    while( file_size>0  ){
                         get_size( tmp_size,file_size );
-
-                        file_content = new char[BUFF_SIZE]();
-                        if((read_byte = read(client_sockfd, file_content, sizeof(char)*tmp_size ))< 0){
-                            ERR_EXIT("receive failed\n");
-                            return -1;
-                        }
+                        memset(file_content,'\0',sizeof(file_content));
+                        read_byte = read(client_sockfd, file_content,tmp_size  );
+                        //cout<<"AAA"<<endl;
                         //===Write in file===
-                        if( ! new_file.is_open() ){
-                            printf("File could not be opened\n");
-                            perror( "ERROR" );
-                            return -1;
-                        }
                         new_file.write( file_content,tmp_size );
-                        sprintf(buffer,"%s","OK");
-                        //Send message to client ready to get file info
-                        if((write_byte = send(client_sockfd,buffer , strlen(buffer), 0 )) < 0){
-                            ERR_EXIT("write failed\n");
-                            return -1;
-                        }
+                        write_byte = send(client_sockfd, "OK", 3, 0);
                     }
                     new_file.close();
+                    free(file_content);
 
                 }
                 //-------------------------------------------------------
@@ -284,37 +241,19 @@ int client_instruction( int client_sockfd ){
             else if(atoi(instruction) == GET_FILE){
                 //printf("GET_FILE\n");
                 memset(buffer,0,sizeof(buffer));
-                if((write_byte = send(client_sockfd, "OK", 3, 0)) < 0){
-                    ERR_EXIT("write failed\n");
-                    return -1;
-                }
+             
                 //Get how much files
-                if((read_byte = read(client_sockfd, buffer, sizeof(buffer) - 1)) < 0){
-                    ERR_EXIT("receive failed\n");
-                    return -1;
-                }
-
-                sscanf(buffer,"%d",&amount_of_file);
-                //printf("amount_of_file: %d\n",amount_of_file);
-                //printf("%ld",strlen(buffer));
-                if((write_byte = send(client_sockfd, "OK", 3, 0)) < 0){
-                    ERR_EXIT("write failed\n");
-                    return -1;
-                }
-
+                read_byte = read(client_sockfd, &amount_of_file, sizeof(amount_of_file));
+                //cout <<"amount_of_file: "<<amount_of_file<<endl;
                 for( int i=0; i<amount_of_file; ++i ){
-
-                    memset(buffer,0,sizeof(buffer));
-                    memset(file_path,0,sizeof(file_path));
+                    memset(buffer,'\0',sizeof(buffer));
+                    memset(file_path,'\0',sizeof(file_path));
+                    memset(file_name,'\0',sizeof(file_name));
                     vector_files.clear();
                     //Get file name
-                    if((read_byte = read(client_sockfd, buffer, sizeof(buffer) - 1)) < 0){
-                        ERR_EXIT("receive failed\n");
-                        return -1;
-                    }
-                    sscanf(buffer,"%s",file_name);
-                    //find file exist and send file size
+                    read_byte = read(client_sockfd, file_name, sizeof(file_name)-1);
                     //printf("filename: %s\n",file_name);
+                    //find file exist and send file size
                     get_files( files,vector_files );
                     vector<string>::iterator it = std::find(vector_files.begin(),vector_files.end(),file_name);
                     if( it != vector_files.end() ){
@@ -333,45 +272,28 @@ int client_instruction( int client_sockfd ){
                     else{
                         file_size = -1;
                     }
-                    sprintf(buffer,"%lld%c",file_size,'\0');
-                    //puts(buffer);
-                    if((write_byte = send(client_sockfd, buffer, strlen(buffer), 0)) < 0){
-                        ERR_EXIT("write failed\n");
-                        return -1;
-                    }
-
-                    if( file_size < 0 ){ 
-                        continue;
-                    }
-                    else{
-                        //Check client ready to get hole file
-                        if((read_byte = read(client_sockfd, buffer, sizeof(buffer) - 1)) < 0){
-                            ERR_EXIT("receive failed\n");
-                            return -1;
-                        }
-                    }
-
+             
+                    write_byte = send(client_sockfd, &file_size, sizeof(file_size), 0);
+                    if( file_size < 0 ) continue;
+                    //cout<<"file_size"<<file_size<<endl;
                     new_file.seekg(0,ios::beg);
-                    //Sending file to client -> sending 1024 bytes once a time 
+                    file_content = new char[BUFF_SIZE]();
+                    //Sending file to client -> sending 1024 bytes once a time
+                    int cnt =0;
                     while( file_size > 0  ){
 
                         get_size( tmp_size,file_size );
-                        file_content = new char[BUFF_SIZE]();
-                        new_file.read(file_content,sizeof(char)*tmp_size);
-                        //printf("%ld\n",content.size());
-                        if((write_byte = send(client_sockfd, file_content, tmp_size, 0)) < 0){
-                            ERR_EXIT("write failed\n");
-                            return -1;
-                        }
-                        //Check client get File info
-                        if((read_byte = read(client_sockfd, buffer, sizeof(buffer) - 1)) < 0){
-                            ERR_EXIT("receive failed\n");
-                            return -1;
-                        }
-                        //cout << "Sending "<< write_byte <<" bytes."<<endl;
+                        memset(file_content,'\0',sizeof(file_content));
+                        new_file.read(file_content,tmp_size);
+                        write_byte = send(client_sockfd, file_content, tmp_size, 0);
+                        read_byte = read(client_sockfd, buffer, 3);
+                        //cout << "Sending "<< tmp_size <<" bytes."<<endl;
+                        //cnt += 1;
                     }
+                    //cout <<"cnt: "<<cnt <<endl;
+                    free(file_content);
                     new_file.close();
-                    sleep(0.1);
+
                 }
 
             }
@@ -432,14 +354,13 @@ int client_instruction( int client_sockfd ){
                     for( int i=0; i<frame_num-1; ++i ){
                         vector<uchar> data_encode;
                         cap.read(frame);
-                        //printf("AAAAAAAAAAAAAAA\n");
                         imencode(".jpg",frame,data_encode);
                         //cout<<"data encode size:"<<data_encode.size()<<endl;
                         string str_encode(data_encode.begin(), data_encode.end());
                         //cout<<"str_encode size:"<<str_encode.size()<<endl;
                         memset(buffer,0,sizeof(buffer));
                         sprintf(buffer,"%ld%c",str_encode.size(),'\0');
-                        
+             
                         //sending frame size
                         if((write_byte = send(client_sockfd, buffer, strlen(buffer), 0)) < 0){
                             ERR_EXIT("write failed\n");
@@ -487,6 +408,7 @@ int client_instruction( int client_sockfd ){
             
             }
             else{
+                cout<<instruction;
                 printf("DEFAULT\n");
             }
             
