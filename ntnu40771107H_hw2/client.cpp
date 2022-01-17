@@ -191,7 +191,10 @@ int main(int argc , char *argv[]){
             // Send instruction to server
             write_byte = send(sockfd, buffer, 2, 0);
             read_byte = 0;
-            read_byte = read(sockfd, &file_size,sizeof(file_size));
+            do{
+                read_byte = read(sockfd, buffer,sizeof(buffer));
+                cout<<"read_byte: "<<read_byte<<", buffer: "<<buffer<<endl;
+            }while(read_byte>0);
             //cout<<"read_byte: "<<read_byte<<", file_size: "<<file_size<<endl;
             if( file_size==0 ){ cout <<"No files."<<endl;}
             else { read_byte = read(sockfd, buffer, file_size); cout << buffer;}
@@ -262,7 +265,7 @@ int main(int argc , char *argv[]){
                         memset(buffer,'\0',sizeof(buffer));
                         new_file.read(buffer,sizeof(char)*tmp_size);
                         write_byte = send(sockfd, buffer, tmp_size, 0);
-                        read_byte = read(sockfd, buffer, 3);
+                        //read_byte = read(sockfd, buffer, 3);
                     }
                     new_file.close();
                 }
@@ -334,7 +337,7 @@ int main(int argc , char *argv[]){
                         memset(buffer,'\0',sizeof(buffer));
                         get_size( tmp_size,file_size );
                         read_byte = read(sockfd, buffer, tmp_size );
-                        write_byte = send(sockfd, "OK", 3, 0);
+                        //write_byte = send(sockfd, "OK", 3, 0);
                         //cout << "Receiving "<< tmp_size <<" bytes."<<endl;
                         //===Write in file===
                         new_file.write( buffer,tmp_size );

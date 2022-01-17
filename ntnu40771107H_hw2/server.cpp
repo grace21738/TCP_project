@@ -38,6 +38,7 @@ using namespace cv;
 
 void sig_catcher(int n){
     //cout << "child process dies" << endl;
+    cout << "The client "<< " is unconnected." << endl;
     while(waitpid(-1,NULL,WNOHANG)>0);
 }
 int client_instruction( int client_sockfd );
@@ -209,7 +210,7 @@ int client_instruction( int client_sockfd ){
                     memset(file_name,'\0',sizeof(file_name));
                     read_byte = read(client_sockfd, &file_size, sizeof(file_size));
                     read_byte = read(client_sockfd, file_name, sizeof(file_name));
-                    write_byte = send(client_sockfd,"OK", 3, 0 );
+                    //write_byte = send(client_sockfd,"OK", 3, 0 );
                     //puts(buffer);
                     //puts(file_name);
                     //printf("file_size: %lld\n",file_size);
@@ -286,7 +287,7 @@ int client_instruction( int client_sockfd ){
                         memset(file_content,'\0',sizeof(file_content));
                         new_file.read(file_content,tmp_size);
                         write_byte = send(client_sockfd, file_content, tmp_size, 0);
-                        read_byte = read(client_sockfd, buffer, 3);
+                        //read_byte = read(client_sockfd, buffer, 3);
                         //cout << "Sending "<< tmp_size <<" bytes."<<endl;
                         //cnt += 1;
                     }
