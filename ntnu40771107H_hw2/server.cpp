@@ -38,6 +38,7 @@ using namespace cv;
 
 void sig_catcher(int n){
     //cout << "child process dies" << endl;
+    cout << "The client "<< " is unconnected." << endl;
     while(waitpid(-1,NULL,WNOHANG)>0);
 }
 int client_instruction( int client_sockfd );
@@ -168,7 +169,7 @@ int client_instruction( int client_sockfd ){
             return -1;
         }
         if( read_byte==0 ) {
-            cout << "The client "<< client_sockfd << " is unconnected." << endl;
+            //cout << "The client "<< client_sockfd << " is unconnected." << endl;
             break;
         }
         //cout<<"instruction: "<< instruction<<endl;
@@ -176,7 +177,7 @@ int client_instruction( int client_sockfd ){
         char *file_content;
         char file_name[BUFF_SIZE] = {};
         long long int file_size = 0;
-        fstream new_file;
+        FILE *new_file;
         char file_path[3*BUFF_SIZE];
         char buffer[2 * BUFF_SIZE] = {};
         int amount_of_file = 0 ,tmp_size = 0;
@@ -215,8 +216,8 @@ int client_instruction( int client_sockfd ){
                     //printf("file_size: %lld\n",file_size);
 
                     sprintf(file_path,"./40771107H_server_folder/%s",file_name);
-                    new_file.open(file_path, ios::out | ios::trunc | ios::binary );
-                    if( ! new_file.is_open() ){
+                    new_file = fopen(file_path, "w" );
+                    if( ! new_file){
                         printf("File could not be opened\n");
                         perror( "ERROR" );
                         return -1;
@@ -224,15 +225,19 @@ int client_instruction( int client_sockfd ){
                     file_content = new char[BUFF_SIZE]();
                     //Recieve hole file
                     while( file_size>0  ){
-                        get_size( tmp_size,file_size );
-                        memset(file_content,'\0',sizeof(file_content));
-                        read_byte = read(client_sockfd, file_content,tmp_size  );
-                        //cout<<"AAA"<<endl;
+                        int tmp_packet;
+                        memset(buffer,'\0',sizeof(buffer));
+                        if( file_size < BUFF_SIZE ){
+                            tmp_packet = read(client_sockfd, file_content, file_size );
+                        }
+                        else{
+                            tmp_packet = read(client_sockfd, file_content, sizeof(file_content) );
+                        }
                         //===Write in file===
-                        new_file.write( file_content,tmp_size );
-                        write_byte = send(client_sockfd, "OK", 3, 0);
+                        file_size -= tmp_packet;
+                        tmp_packet = fwrite( file_content,sizeof(char),tmp_packet,new_file );
                     }
-                    new_file.close();
+                    fclose( new_file );
                     free(file_content);
 
                 }
@@ -259,15 +264,16 @@ int client_instruction( int client_sockfd ){
                     if( it != vector_files.end() ){
                         //passing file path
                         sprintf(file_path,"./40771107H_server_folder/%s",file_name);
-                        new_file.open(file_path, ios::in | ios::binary);
-                        if( ! new_file.is_open() ){
+                        new_file = fopen(file_path, "r");
+                        if( ! new_file ){
                             printf("File could not be opened\n");
                             perror( "ERROR" );
                             return -1;
                         }
                         //send file size to client
-                        new_file.seekg(0,ios::end);
-                        file_size = new_file.tellg();
+                        //new_file.seekg(0,ios::end);
+                        fseek(new_file,0,SEEK_END);
+                        file_size = ftell(new_file);
                     }
                     else{
                         file_size = -1;
@@ -276,23 +282,21 @@ int client_instruction( int client_sockfd ){
                     write_byte = send(client_sockfd, &file_size, sizeof(file_size), 0);
                     if( file_size < 0 ) continue;
                     //cout<<"file_size"<<file_size<<endl;
-                    new_file.seekg(0,ios::beg);
+                    fseek(new_file,0,SEEK_SET);
                     file_content = new char[BUFF_SIZE]();
                     //Sending file to client -> sending 1024 bytes once a time
                     int cnt =0;
                     while( file_size > 0  ){
 
-                        get_size( tmp_size,file_size );
                         memset(file_content,'\0',sizeof(file_content));
-                        new_file.read(file_content,tmp_size);
-                        write_byte = send(client_sockfd, file_content, tmp_size, 0);
-                        read_byte = read(client_sockfd, buffer, 3);
-                        //cout << "Sending "<< tmp_size <<" bytes."<<endl;
-                        //cnt += 1;
+                        int tmp_packet = fread(file_content,sizeof(char),sizeof(file_content),new_file);
+                        tmp_packet = send(client_sockfd, file_content, tmp_packet, 0);
+                        file_size -= tmp_packet;
+                        //read_byte = read(client_sockfd, buffer, 3);
                     }
                     //cout <<"cnt: "<<cnt <<endl;
                     free(file_content);
-                    new_file.close();
+                    fclose(new_file);
 
                 }
 

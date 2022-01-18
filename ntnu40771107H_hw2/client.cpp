@@ -237,34 +237,32 @@ int main(int argc , char *argv[]){
                 if( it != my_files.end() ){
 
 
-                    fstream new_file;
-                    new_file.open(file_path, ios::in | ios::binary);
-                    if( ! new_file.is_open() ){
+                    FILE *new_file;
+                    new_file = fopen(file_path, "r");
+                    if( ! new_file ){
                         printf("File could not be opened\n");
                         perror( "ERROR" );
                         return -1;
                     }
                     //send file name and file size to server
-                    new_file.seekg(0,ios::end);
-                    file_size = new_file.tellg();
+                    fseek(new_file,0,SEEK_END);
+                    file_size = ftell(new_file);
                     //puts(buffer);
 
                     write_byte = send(sockfd, &file_size, sizeof(file_size), 0);
                     write_byte = send(sockfd, file.c_str(), file.size(), 0);
                     read_byte = read(sockfd, buffer, 3);
                     //cout<<"OK: "<<buffer<<endl;
-                    new_file.seekg(0,ios::beg);
+                    fseek(new_file,0,SEEK_SET);
                     //Sending file to server -> sending 1024 bytes once a time
                     cout << "putting " << file <<"......"<<endl;
                     while( file_size > 0  ){
-
-                        get_size( tmp_size,file_size );
                         memset(buffer,'\0',sizeof(buffer));
-                        new_file.read(buffer,sizeof(char)*tmp_size);
-                        write_byte = send(sockfd, buffer, tmp_size, 0);
-                        read_byte = read(sockfd, buffer, 3);
+                        int tmp_packet = fread(buffer,sizeof(char),sizeof(buffer),new_file);
+                        tmp_packet = send(sockfd, buffer, tmp_packet, 0);
+                        file_size -= tmp_packet;
                     }
-                    new_file.close();
+                    fclose(new_file);
                 }
                 //Not found
                 else
@@ -318,9 +316,9 @@ int main(int argc , char *argv[]){
                     //start getting file
                     memset(file_path,'\0',sizeof(file_path));
                     sprintf(file_path,"%s/%s",my_path,file.c_str());
-                    fstream new_file;
-                    new_file.open(file_path, ios::out | ios::trunc | ios::binary );
-                    if( ! new_file.is_open() ){
+                    FILE *new_file;
+                    new_file = fopen(file_path, "w");
+                    if( ! new_file ){
                         printf("File could not be opened\n");
                         perror( "ERROR" );
                         return -1;
@@ -331,19 +329,22 @@ int main(int argc , char *argv[]){
 
                     //cout<<"file_size: "<<file_size<<endl;
                     while( file_size > 0  ){
+                        int tmp_packet;
                         memset(buffer,'\0',sizeof(buffer));
-                        get_size( tmp_size,file_size );
-                        read_byte = read(sockfd, buffer, tmp_size );
-                        write_byte = send(sockfd, "OK", 3, 0);
-                        //cout << "Receiving "<< tmp_size <<" bytes."<<endl;
+                        if( file_size < BUFF_SIZE ){
+                            tmp_packet = read(sockfd, buffer, file_size );
+                        }
+                        else{
+                            tmp_packet = read(sockfd, buffer, sizeof(buffer) );
+                        }
                         //===Write in file===
-                        new_file.write( buffer,tmp_size );
-                        //cnt += 1;
+                        file_size -= tmp_packet;
+                        tmp_packet = fwrite( buffer,sizeof(char),tmp_packet,new_file );
 
                     }
                     //read_byte = read(sockfd, buffer, tmp_size );
                     //cout <<"cnt: "<<cnt <<endl;
-                    new_file.close();
+                    fclose(new_file);
 
                 }
                 else{
